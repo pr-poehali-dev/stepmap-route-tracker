@@ -4,89 +4,51 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 222 30% 6%;
+    --foreground: 210 40% 96%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 222 28% 9%;
+    --card-foreground: 210 40% 96%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 222 28% 9%;
+    --popover-foreground: 210 40% 96%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 152 70% 50%;
+    --primary-foreground: 222 30% 6%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 222 24% 14%;
+    --secondary-foreground: 210 40% 96%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 222 24% 14%;
+    --muted-foreground: 215 20% 55%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 262 70% 65%;
+    --accent-foreground: 210 40% 96%;
 
-    --destructive: 0 84.2% 60.2%;
+    --destructive: 0 70% 55%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 222 24% 16%;
+    --input: 222 24% 16%;
+    --ring: 152 70% 50%;
 
-    --radius: 0.5rem;
+    --radius: 1rem;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 222 30% 6%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 152 70% 50%;
+    --sidebar-primary-foreground: 222 30% 6%;
+    --sidebar-accent: 222 24% 14%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 222 24% 16%;
+    --sidebar-ring: 152 70% 50%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* StepMap custom */
+    --grad-green: #22d17a;
+    --grad-blue: #4f8ef7;
+    --grad-purple: #a855f7;
+    --grad-pink: #f472b6;
+    --grad-orange: #fb923c;
   }
 }
 
@@ -97,5 +59,363 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Golos Text", sans-serif;
+    overflow-x: hidden;
   }
+}
+
+/* Геометрический фон */
+.geo-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.geo-bg::before {
+  content: "";
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(34, 209, 122, 0.07) 0%,
+    transparent 70%
+  );
+  top: -200px;
+  right: -100px;
+  animation: geo-pulse 8s ease-in-out infinite;
+}
+
+.geo-bg::after {
+  content: "";
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(168, 85, 247, 0.07) 0%,
+    transparent 70%
+  );
+  bottom: -150px;
+  left: -100px;
+  animation: geo-pulse 10s ease-in-out infinite reverse;
+}
+
+@keyframes geo-pulse {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15) translateY(-30px);
+    opacity: 1;
+  }
+}
+
+/* Карточки со стеклом */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 1.5rem;
+}
+
+.glass-card-sm {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1.25rem;
+}
+
+/* Градиентный текст */
+.gradient-text {
+  background: linear-gradient(
+    135deg,
+    var(--grad-green) 0%,
+    var(--grad-blue) 50%,
+    var(--grad-purple) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-warm {
+  background: linear-gradient(
+    135deg,
+    var(--grad-orange) 0%,
+    var(--grad-pink) 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Градиентные кнопки */
+.btn-gradient {
+  background: linear-gradient(
+    135deg,
+    var(--grad-green) 0%,
+    var(--grad-blue) 100%
+  );
+  color: #0a1628;
+  border: none;
+  border-radius: 1rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 24px rgba(34, 209, 122, 0.25);
+}
+
+.btn-gradient:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(34, 209, 122, 0.4);
+}
+
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+/* Кольцо прогресса */
+@keyframes progress-ring {
+  from {
+    stroke-dashoffset: 339.3;
+  }
+}
+
+/* Навигация */
+.nav-item {
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.nav-item.active {
+  transform: translateY(-4px);
+}
+
+/* Анимации появления */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.animate-fade-in {
+  animation: fade-in 0.4s ease both;
+}
+.animate-scale-in {
+  animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.animate-slide-up {
+  animation: slide-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+.delay-150 {
+  animation-delay: 0.15s;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+.delay-400 {
+  animation-delay: 0.4s;
+}
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Пульсирующая точка GPS */
+@keyframes gps-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.8);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.gps-dot {
+  width: 10px;
+  height: 10px;
+  background: var(--grad-green);
+  border-radius: 50%;
+  animation: gps-pulse 2s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(34, 209, 122, 0.8);
+}
+
+/* Карта заглушка */
+.map-placeholder {
+  background:
+    radial-gradient(
+      circle at 30% 40%,
+      rgba(34, 209, 122, 0.12) 0%,
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 70% 60%,
+      rgba(79, 142, 247, 0.1) 0%,
+      transparent 40%
+    ),
+    linear-gradient(145deg, #0d1b2a 0%, #0a1520 50%, #0d1629 100%);
+}
+
+.map-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Маршрут на карте */
+@keyframes route-draw {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.route-path {
+  stroke-dasharray: 1000;
+  animation: route-draw 2s ease-out forwards;
+}
+
+/* Бейджи достижений */
+.achievement-badge {
+  background: linear-gradient(
+    135deg,
+    rgba(34, 209, 122, 0.15),
+    rgba(79, 142, 247, 0.15)
+  );
+  border: 1px solid rgba(34, 209, 122, 0.3);
+  border-radius: 1rem;
+}
+
+/* Полоса прогресса */
+.progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--grad-green), var(--grad-blue));
+  transition: width 1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Иконка шага */
+@keyframes step-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+/* Скроллбар */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+/* Тег статуса */
+.status-active {
+  background: rgba(34, 209, 122, 0.15);
+  color: var(--grad-green);
+  border: 1px solid rgba(34, 209, 122, 0.3);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 10px;
+}
+
+.status-done {
+  background: rgba(79, 142, 247, 0.15);
+  color: var(--grad-blue);
+  border: 1px solid rgba(79, 142, 247, 0.3);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 10px;
+}
+
+/* Таблица лидеров */
+.leaderboard-row:first-child {
+  background: linear-gradient(90deg, rgba(34, 209, 122, 0.12), transparent);
+  border: 1px solid rgba(34, 209, 122, 0.2);
+}
+
+.leaderboard-row:nth-child(2) {
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.08), transparent);
+  border: 1px solid rgba(168, 85, 247, 0.15);
+}
+
+.leaderboard-row:nth-child(3) {
+  background: linear-gradient(90deg, rgba(251, 146, 60, 0.08), transparent);
+  border: 1px solid rgba(251, 146, 60, 0.15);
 }
