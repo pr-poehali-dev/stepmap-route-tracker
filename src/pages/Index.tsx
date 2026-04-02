@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
 type IconName = Parameters<typeof Icon>[0]["name"];
@@ -179,85 +179,300 @@ function HomeScreen({ onNav }: { onNav: (s: Screen) => void }) {
   );
 }
 
+// Вычисление расстояния между двумя GPS-точками (формула Haversine)
+function calcDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+type GeoPoint = { lat: number; lon: number };
+
+// Преобразует GPS-координаты в SVG-координаты (400×320)
+function geoToSvg(points: GeoPoint[], w = 400, h = 320): { x: number; y: number }[] {
+  if (points.length === 0) return [];
+  const lats = points.map((p) => p.lat);
+  const lons = points.map((p) => p.lon);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const pad = 40;
+  const rangeX = maxLon - minLon || 0.001;
+  const rangeY = maxLat - minLat || 0.001;
+  return points.map((p) => ({
+    x: pad + ((p.lon - minLon) / rangeX) * (w - pad * 2),
+    y: h - pad - ((p.lat - minLat) / rangeY) * (h - pad * 2),
+  }));
+}
+
+function formatTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 // --- MAP SCREEN ---
 function MapScreen() {
   const [tracking, setTracking] = useState(false);
+  const [points, setPoints] = useState<GeoPoint[]>([]);
+  const [currentPos, setCurrentPos] = useState<GeoPoint | null>(null);
+  const [distanceM, setDistanceM] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsReady, setGpsReady] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef<number>(0);
+
+  // Запрашиваем начальную позицию при монтировании
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      setGpsError("GPS не поддерживается браузером");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCurrentPos({ lat: pos.coords.latitude, lon: pos.coords.longitude });
+        setGpsReady(true);
+      },
+      () => setGpsError("Разрешите доступ к геолокации"),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }, []);
+
+  const stopTracking = useCallback(() => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    setTracking(false);
+  }, []);
+
+  const startTracking = useCallback(() => {
+    if (!navigator.geolocation) return;
+    setPoints([]);
+    setDistanceM(0);
+    setElapsed(0);
+    startTimeRef.current = Date.now();
+
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const newPt: GeoPoint = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCurrentPos(newPt);
+        setPoints((prev) => {
+          if (prev.length > 0) {
+            const last = prev[prev.length - 1];
+            const d = calcDistance(last.lat, last.lon, newPt.lat, newPt.lon);
+            if (d < 3) return prev; // фильтруем шум < 3 м
+            setDistanceM((dm) => dm + d);
+          }
+          return [...prev, newPt];
+        });
+      },
+      (err) => {
+        setGpsError(err.message);
+        stopTracking();
+      },
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
+    );
+    setTracking(true);
+  }, [stopTracking]);
+
+  useEffect(() => () => stopTracking(), [stopTracking]);
+
+  const svgPoints = geoToSvg(points);
+  const polyline = svgPoints.map((p) => `${p.x},${p.y}`).join(" ");
+  const lastPt = svgPoints[svgPoints.length - 1];
+  const firstPt = svgPoints[0];
+  const distKm = (distanceM / 1000).toFixed(2);
+  const pace = elapsed > 0 && distanceM > 0
+    ? `${((elapsed / 60) / (distanceM / 1000)).toFixed(1)} мин/км`
+    : "—";
 
   return (
     <div className="flex flex-col gap-4 pb-4">
       <div className="flex items-center justify-between animate-fade-up">
         <div>
           <h2 className="text-xl font-bold font-montserrat text-white">Маршрут</h2>
-          <p className="text-sm text-white/40 font-golos">GPS запись активна</p>
+          <p className="text-sm text-white/40 font-golos">
+            {tracking ? "Запись идёт..." : gpsReady ? "GPS готов" : "Определяю позицию..."}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="gps-dot" />
-          <span className="text-xs text-[var(--grad-green)] font-golos font-semibold">GPS</span>
+          <div className={`gps-dot ${!gpsReady ? "opacity-40" : ""}`} />
+          <span className="text-xs font-golos font-semibold" style={{ color: "var(--grad-green)" }}>
+            {tracking ? "REC" : "GPS"}
+          </span>
         </div>
       </div>
 
-      {/* Map */}
+      {/* GPS Error */}
+      {gpsError && (
+        <div className="rounded-2xl p-4 text-sm font-golos text-white/80 animate-fade-up"
+          style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
+          ⚠️ {gpsError}
+        </div>
+      )}
+
+      {/* Current Position Info */}
+      {currentPos && (
+        <div className="glass-card-sm px-4 py-2.5 flex items-center gap-3 animate-fade-up">
+          <Icon name="MapPin" size={14} style={{ color: "var(--grad-green)" }} />
+          <span className="text-xs font-golos text-white/70">
+            {currentPos.lat.toFixed(5)}, {currentPos.lon.toFixed(5)}
+          </span>
+          {tracking && (
+            <span className="ml-auto text-xs font-semibold font-golos" style={{ color: "var(--grad-pink)" }}>
+              ● LIVE
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Map SVG Canvas */}
       <div className="map-placeholder map-grid rounded-3xl overflow-hidden relative animate-scale-in delay-100" style={{ height: 320 }}>
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 320" preserveAspectRatio="none">
-          <path
-            d="M 60 250 Q 100 200 140 180 Q 180 160 200 130 Q 220 100 260 90 Q 300 80 330 110 Q 350 130 340 160"
-            fill="none"
-            stroke="rgba(34,209,122,0.6)"
-            strokeWidth="3"
-            strokeLinecap="round"
-            className="route-path"
-            style={{ filter: "drop-shadow(0 0 8px rgba(34,209,122,0.8))" }}
-          />
-          <circle cx="60" cy="250" r="6" fill="#22d17a" style={{ filter: "drop-shadow(0 0 6px #22d17a)" }} />
-          <circle cx="340" cy="160" r="8" fill="#4f8ef7" style={{ filter: "drop-shadow(0 0 8px #4f8ef7)" }}>
-            <animate attributeName="r" values="8;12;8" dur="2s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
-          </circle>
-          <circle cx="200" cy="130" r="5" fill="rgba(251,146,60,0.9)" />
-          <circle cx="260" cy="90" r="5" fill="rgba(168,85,247,0.9)" />
+        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 320">
+          {/* Сетка */}
+          <defs>
+            <linearGradient id="routeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#22d17a" />
+              <stop offset="100%" stopColor="#4f8ef7" />
+            </linearGradient>
+          </defs>
+
+          {/* Линия маршрута */}
+          {svgPoints.length >= 2 && (
+            <polyline
+              points={polyline}
+              fill="none"
+              stroke="url(#routeGrad)"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ filter: "drop-shadow(0 0 6px rgba(34,209,122,0.7))" }}
+            />
+          )}
+
+          {/* Начальная точка */}
+          {firstPt && (
+            <circle cx={firstPt.x} cy={firstPt.y} r="6" fill="#22d17a"
+              style={{ filter: "drop-shadow(0 0 6px #22d17a)" }} />
+          )}
+
+          {/* Текущая / конечная точка */}
+          {lastPt && svgPoints.length >= 2 && (
+            <>
+              <circle cx={lastPt.x} cy={lastPt.y} r="10" fill="rgba(79,142,247,0.2)">
+                <animate attributeName="r" values="8;14;8" dur="1.8s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.8;0.2;0.8" dur="1.8s" repeatCount="indefinite" />
+              </circle>
+              <circle cx={lastPt.x} cy={lastPt.y} r="6" fill="#4f8ef7"
+                style={{ filter: "drop-shadow(0 0 8px #4f8ef7)" }} />
+            </>
+          )}
+
+          {/* Заглушка если нет точек */}
+          {points.length === 0 && (
+            <text x="200" y="165" textAnchor="middle" fill="rgba(255,255,255,0.2)"
+              fontSize="13" fontFamily="Golos Text, sans-serif">
+              {tracking ? "Двигайтесь — маршрут появится..." : "Нажмите «Начать» для записи"}
+            </text>
+          )}
         </svg>
-        <div className="absolute top-4 left-4 glass-card-sm px-3 py-1.5">
-          <p className="text-xs text-white/70 font-golos">📍 ул. Ленина, 42</p>
-        </div>
-        <div className="absolute bottom-4 right-4 glass-card-sm px-3 py-1.5">
-          <p className="text-xs text-[var(--grad-blue)] font-golos font-semibold">📌 Текущее место</p>
-        </div>
-        <div className="absolute" style={{ top: 105, left: 185 }}>
-          <div className="bg-[var(--grad-orange)] text-black text-[10px] font-bold px-2 py-0.5 rounded-full">☕ Кофе</div>
-        </div>
-        <div className="absolute" style={{ top: 65, left: 245 }}>
-          <div className="bg-[var(--grad-purple)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">🌳 Парк</div>
-        </div>
+
+        {/* Точки отсчёта */}
+        {points.length > 0 && (
+          <>
+            <div className="absolute top-4 left-4 glass-card-sm px-3 py-1.5">
+              <p className="text-xs text-white/70 font-golos">🟢 Старт</p>
+            </div>
+            {tracking && (
+              <div className="absolute bottom-4 right-4 glass-card-sm px-3 py-1.5">
+                <p className="text-xs font-golos font-semibold" style={{ color: "var(--grad-blue)" }}>
+                  📌 {points.length} точек
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {!tracking && points.length === 0 && gpsReady && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-4xl mb-2">🗺️</div>
+              <p className="text-sm text-white/40 font-golos">Маршрут отобразится здесь</p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3 animate-fade-up delay-200">
         {[
-          { icon: "Route", label: "Расстояние", value: "5.6 км", color: "var(--grad-green)" },
-          { icon: "Clock", label: "Время", value: "1:12 ч", color: "var(--grad-blue)" },
-          { icon: "Zap", label: "Темп", value: "12.7 мин/км", color: "var(--grad-purple)" },
+          { icon: "Route", label: "Расстояние", value: `${distKm} км`, color: "var(--grad-green)" },
+          { icon: "Clock", label: "Время", value: formatTime(elapsed), color: "var(--grad-blue)" },
+          { icon: "Zap", label: "Темп", value: pace, color: "var(--grad-purple)" },
         ].map((s, i) => (
           <div key={i} className="glass-card p-3 text-center">
             <Icon name={s.icon as IconName} size={18} style={{ color: s.color }} className="mx-auto mb-1" />
-            <p className="text-base font-bold font-montserrat text-white">{s.value}</p>
+            <p className="text-sm font-bold font-montserrat text-white leading-tight">{s.value}</p>
             <p className="text-[10px] text-white/40 font-golos">{s.label}</p>
           </div>
         ))}
       </div>
 
+      {/* Control Button */}
       <button
-        onClick={() => setTracking(!tracking)}
-        className="w-full py-4 rounded-2xl font-bold font-golos text-base transition-all active:scale-95"
+        onClick={tracking ? stopTracking : startTracking}
+        disabled={!gpsReady && !tracking}
+        className="w-full py-4 rounded-2xl font-bold font-golos text-base transition-all active:scale-95 disabled:opacity-40"
         style={{
           background: tracking
-            ? "linear-gradient(135deg, rgba(239,68,68,0.8), rgba(251,146,60,0.8))"
+            ? "linear-gradient(135deg, rgba(239,68,68,0.85), rgba(251,146,60,0.85))"
             : "linear-gradient(135deg, #22d17a, #4f8ef7)",
           color: tracking ? "white" : "#0a1628",
           boxShadow: tracking ? "0 4px 24px rgba(239,68,68,0.3)" : "0 4px 24px rgba(34,209,122,0.3)"
         }}
       >
-        {tracking ? "⏹ Остановить запись" : "▶ Начать запись маршрута"}
+        {tracking
+          ? `⏹ Остановить · ${formatTime(elapsed)}`
+          : gpsReady
+            ? "▶ Начать запись маршрута"
+            : "⏳ Определяю GPS..."}
       </button>
+
+      {/* Saved route summary after stop */}
+      {!tracking && points.length > 1 && (
+        <div className="glass-card p-4 animate-scale-in"
+          style={{ border: "1px solid rgba(34,209,122,0.25)" }}>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">✅</span>
+            <div>
+              <p className="text-sm font-bold font-golos text-white">Маршрут записан</p>
+              <p className="text-xs text-white/50 font-golos">
+                {distKm} км · {formatTime(elapsed)} · {points.length} точек
+              </p>
+            </div>
+            <button className="ml-auto text-xs font-golos px-3 py-1.5 rounded-xl"
+              style={{ background: "rgba(34,209,122,0.15)", color: "var(--grad-green)" }}>
+              Сохранить
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Interesting places */}
       <div className="animate-fade-up delay-300">
