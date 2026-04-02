@@ -1,0 +1,32 @@
+{
+  "tests": [
+    {
+      "name": "GET routes (empty list)",
+      "method": "GET",
+      "path": "/",
+      "headers": { "X-User-Id": "test_user_1" },
+      "expectedStatus": 200,
+      "expectedBody": { "routes": [] },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "POST save route",
+      "method": "POST",
+      "path": "/",
+      "headers": { "X-User-Id": "test_user_1", "Content-Type": "application/json" },
+      "body": { "distance_m": 1234.5, "elapsed_sec": 600, "points": [{"lat": 55.75, "lon": 37.61}], "note": "Тест" },
+      "expectedStatus": 200,
+      "expectedBody": { "ok": true },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "GET routes after save",
+      "method": "GET",
+      "path": "/",
+      "headers": { "X-User-Id": "test_user_1" },
+      "expectedStatus": 200,
+      "expectedBody": { "routes": [{}] },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -5,6 +5,57 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 
 type Screen = "home" | "map" | "history" | "stats" | "challenges" | "profile" | "notifications";
 
+const ROUTES_API = "https://functions.poehali.dev/83697f31-5c0f-4026-be7e-ff8677f2beda";
+
+// Простой постоянный ID пользователя в localStorage
+function getUserId(): string {
+  let id = localStorage.getItem("stepmap_uid");
+  if (!id) {
+    id = "u_" + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem("stepmap_uid", id);
+  }
+  return id;
+}
+
+async function apiSaveRoute(data: {
+  distance_m: number;
+  elapsed_sec: number;
+  points: { lat: number; lon: number }[];
+  note: string;
+}): Promise<{ ok: boolean; id?: number }> {
+  const res = await fetch(ROUTES_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-User-Id": getUserId() },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
+async function apiFetchRoutes(): Promise<DbRoute[]> {
+  const res = await fetch(ROUTES_API, {
+    headers: { "X-User-Id": getUserId() },
+  });
+  const data = await res.json();
+  return data.routes || [];
+}
+
+async function apiDeleteRoute(id: number): Promise<void> {
+  await fetch(`${ROUTES_API}?id=${id}`, {
+    method: "DELETE",
+    headers: { "X-User-Id": getUserId() },
+  });
+}
+
+interface DbRoute {
+  id: number;
+  date: string;
+  distance_m: number;
+  elapsed_sec: number;
+  points: { lat: number; lon: number }[];
+  note: string;
+  created_at: string;
+}
+
 const NAV_ITEMS = [
   { id: "home", icon: "Footprints", label: "Главная" },
   { id: "map", icon: "Map", label: "Карта" },
@@ -225,9 +276,14 @@ function MapScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [gpsReady, setGpsReady] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const watchIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const savedPointsRef = useRef<GeoPoint[]>([]);
+  const savedDistRef = useRef(0);
+  const savedElapsedRef = useRef(0);
 
   // Запрашиваем начальную позицию при монтировании
   useEffect(() => {
@@ -254,6 +310,7 @@ function MapScreen() {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    setSaved(false);
     setTracking(false);
   }, []);
 
@@ -292,6 +349,29 @@ function MapScreen() {
   }, [stopTracking]);
 
   useEffect(() => () => stopTracking(), [stopTracking]);
+
+  // При остановке сохраняем снимок данных для кнопки «Сохранить»
+  const handleStop = useCallback(() => {
+    savedPointsRef.current = points;
+    savedDistRef.current = distanceM;
+    savedElapsedRef.current = elapsed;
+    stopTracking();
+  }, [points, distanceM, elapsed, stopTracking]);
+
+  const handleSave = useCallback(async (note = "") => {
+    setSaving(true);
+    try {
+      await apiSaveRoute({
+        distance_m: savedDistRef.current,
+        elapsed_sec: savedElapsedRef.current,
+        points: savedPointsRef.current,
+        note,
+      });
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   const svgPoints = geoToSvg(points);
   const polyline = svgPoints.map((p) => `${p.x},${p.y}`).join(" ");
@@ -436,7 +516,7 @@ function MapScreen() {
 
       {/* Control Button */}
       <button
-        onClick={tracking ? stopTracking : startTracking}
+        onClick={tracking ? handleStop : startTracking}
         disabled={!gpsReady && !tracking}
         className="w-full py-4 rounded-2xl font-bold font-golos text-base transition-all active:scale-95 disabled:opacity-40"
         style={{
@@ -455,21 +535,29 @@ function MapScreen() {
       </button>
 
       {/* Saved route summary after stop */}
-      {!tracking && points.length > 1 && (
+      {!tracking && savedPointsRef.current.length > 1 && (
         <div className="glass-card p-4 animate-scale-in"
-          style={{ border: "1px solid rgba(34,209,122,0.25)" }}>
+          style={{ border: `1px solid ${saved ? "rgba(34,209,122,0.4)" : "rgba(34,209,122,0.2)"}` }}>
           <div className="flex items-center gap-3">
-            <span className="text-2xl">✅</span>
+            <span className="text-2xl">{saved ? "✅" : "🗺️"}</span>
             <div>
-              <p className="text-sm font-bold font-golos text-white">Маршрут записан</p>
+              <p className="text-sm font-bold font-golos text-white">
+                {saved ? "Маршрут сохранён в историю!" : "Маршрут записан"}
+              </p>
               <p className="text-xs text-white/50 font-golos">
-                {distKm} км · {formatTime(elapsed)} · {points.length} точек
+                {(savedDistRef.current / 1000).toFixed(2)} км · {formatTime(savedElapsedRef.current)} · {savedPointsRef.current.length} точек
               </p>
             </div>
-            <button className="ml-auto text-xs font-golos px-3 py-1.5 rounded-xl"
-              style={{ background: "rgba(34,209,122,0.15)", color: "var(--grad-green)" }}>
-              Сохранить
-            </button>
+            {!saved && (
+              <button
+                onClick={() => handleSave()}
+                disabled={saving}
+                className="ml-auto text-xs font-golos px-3 py-1.5 rounded-xl transition-all disabled:opacity-50"
+                style={{ background: "rgba(34,209,122,0.15)", color: "var(--grad-green)", border: "1px solid rgba(34,209,122,0.3)" }}
+              >
+                {saving ? "⏳..." : "Сохранить"}
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -500,23 +588,72 @@ function MapScreen() {
   );
 }
 
+const ROUTE_COLORS = ["#22d17a", "#4f8ef7", "#a855f7", "#fb923c", "#f472b6"];
+
+function formatRouteDate(isoDate: string): string {
+  const d = new Date(isoDate);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Сегодня";
+  if (d.toDateString() === yesterday.toDateString()) return "Вчера";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" });
+}
+
 // --- HISTORY SCREEN ---
 function HistoryScreen() {
   const [activeTab, setActiveTab] = useState<"day" | "week" | "month">("week");
+  const [routes, setRoutes] = useState<DbRoute[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [noteText, setNoteText] = useState("");
 
-  const routes = [
-    { date: "Сегодня, 2 апр", dist: "5.6 км", steps: 7842, time: "1:12", note: "Прогулка в парке 🌳", color: "#22d17a" },
-    { date: "Вчера, 1 апр", dist: "3.2 км", steps: 4521, time: "0:48", note: "Поход на работу 💼", color: "#4f8ef7" },
-    { date: "31 мар, пт", dist: "8.1 км", steps: 11340, time: "1:54", note: "Вечерняя пробежка 🏃", color: "#a855f7" },
-    { date: "30 мар, чт", dist: "2.8 км", steps: 3920, time: "0:38", note: "", color: "#fb923c" },
-    { date: "29 мар, ср", dist: "6.3 км", steps: 8810, time: "1:25", note: "Встреча с друзьями ☀️", color: "#f472b6" },
-  ];
+  useEffect(() => {
+    apiFetchRoutes()
+      .then(setRoutes)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleDelete = async (id: number) => {
+    await apiDeleteRoute(id);
+    setRoutes((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const handleSaveNote = async (id: number) => {
+    // Оптимистично обновляем UI
+    setRoutes((prev) => prev.map((r) => r.id === id ? { ...r, note: noteText } : r));
+    setEditingId(null);
+  };
+
+  // График расстояний по последним 7 дням
+  const last7 = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    const dateStr = d.toISOString().slice(0, 10);
+    const dayRoutes = routes.filter((r) => r.date === dateStr || r.created_at?.slice(0, 10) === dateStr);
+    const totalM = dayRoutes.reduce((acc, r) => acc + r.distance_m, 0);
+    return {
+      day: d.toLocaleDateString("ru-RU", { weekday: "short" }).slice(0, 2),
+      val: totalM,
+    };
+  });
+  const maxVal = Math.max(...last7.map((d) => d.val), 1);
 
   return (
     <div className="flex flex-col gap-4 pb-4">
-      <div className="animate-fade-up">
-        <h2 className="text-xl font-bold font-montserrat text-white">История маршрутов</h2>
-        <p className="text-sm text-white/40 font-golos mt-0.5">Все ваши прогулки</p>
+      <div className="flex items-center justify-between animate-fade-up">
+        <div>
+          <h2 className="text-xl font-bold font-montserrat text-white">История маршрутов</h2>
+          <p className="text-sm text-white/40 font-golos mt-0.5">
+            {loading ? "Загружаю..." : `${routes.length} маршрутов сохранено`}
+          </p>
+        </div>
+        <button
+          onClick={() => { setLoading(true); apiFetchRoutes().then(setRoutes).finally(() => setLoading(false)); }}
+          className="w-9 h-9 glass-card-sm flex items-center justify-center"
+        >
+          <Icon name="RefreshCw" size={16} className="text-white/50" />
+        </button>
       </div>
 
       <div className="glass-card-sm p-1.5 flex gap-1 animate-fade-up delay-100">
@@ -535,25 +672,20 @@ function HistoryScreen() {
         ))}
       </div>
 
-      {/* Weekly chart */}
+      {/* График по дням */}
       <div className="glass-card p-4 animate-fade-up delay-150">
-        <h3 className="text-sm font-semibold font-golos text-white/60 mb-3">Шаги по дням</h3>
+        <h3 className="text-sm font-semibold font-golos text-white/60 mb-3">Километры по дням</h3>
         <div className="flex items-end gap-2 h-20">
-          {[
-            { day: "Пн", val: 8810 }, { day: "Вт", val: 3920 }, { day: "Ср", val: 11340 },
-            { day: "Чт", val: 4521 }, { day: "Пт", val: 7842 }, { day: "Сб", val: 0 }, { day: "Вс", val: 0 }
-          ].map(({ day, val }, i) => (
+          {last7.map(({ day, val }, i) => (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className="w-full rounded-t-lg"
+              <div className="w-full rounded-t-lg transition-all"
                 style={{
-                  height: `${val > 0 ? Math.max((val / 11340) * 64, 8) : 4}px`,
-                  background: i === 4
+                  height: `${val > 0 ? Math.max((val / maxVal) * 64, 8) : 4}px`,
+                  background: i === 6
                     ? "linear-gradient(180deg, #22d17a, #4f8ef7)"
-                    : val >= 10000
-                      ? "rgba(34,209,122,0.5)"
-                      : val > 0
-                        ? "rgba(255,255,255,0.15)"
-                        : "rgba(255,255,255,0.04)"
+                    : val > 0
+                      ? "rgba(255,255,255,0.18)"
+                      : "rgba(255,255,255,0.04)"
                 }}
               />
               <span className="text-[9px] text-white/30 font-golos">{day}</span>
@@ -562,30 +694,95 @@ function HistoryScreen() {
         </div>
       </div>
 
+      {/* Список маршрутов */}
       <div className="flex flex-col gap-3 animate-fade-up delay-200">
-        {routes.map((r, i) => (
-          <div key={i} className="glass-card p-4 flex gap-3 items-start">
-            <div className="w-10 h-10 rounded-2xl shrink-0 flex items-center justify-center"
-              style={{ background: `${r.color}20`, border: `1px solid ${r.color}40` }}>
-              <Icon name="MapPin" size={18} style={{ color: r.color }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold font-golos text-white">{r.date}</p>
-                <span className="status-done">{r.dist}</span>
-              </div>
-              <div className="flex gap-3 mt-1">
-                <span className="text-xs text-white/40 font-golos">👟 {r.steps.toLocaleString("ru")}</span>
-                <span className="text-xs text-white/40 font-golos">⏱ {r.time} ч</span>
-              </div>
-              {r.note ? (
-                <p className="text-xs mt-1.5 text-white/60 font-golos bg-white/5 px-2 py-1 rounded-lg inline-block">{r.note}</p>
-              ) : (
-                <button className="text-xs mt-1.5 text-white/25 font-golos">+ Добавить заметку</button>
-              )}
+        {loading && (
+          <div className="glass-card p-8 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-3xl mb-2 animate-spin">⚙️</div>
+              <p className="text-sm text-white/40 font-golos">Загружаю маршруты...</p>
             </div>
           </div>
-        ))}
+        )}
+
+        {!loading && routes.length === 0 && (
+          <div className="glass-card p-8 text-center">
+            <div className="text-4xl mb-3">🗺️</div>
+            <p className="text-sm font-semibold font-golos text-white">Нет сохранённых маршрутов</p>
+            <p className="text-xs text-white/40 font-golos mt-1">Запишите первую прогулку на вкладке «Карта»</p>
+          </div>
+        )}
+
+        {!loading && routes.map((r, i) => {
+          const color = ROUTE_COLORS[i % ROUTE_COLORS.length];
+          const distKm = (r.distance_m / 1000).toFixed(2);
+          return (
+            <div key={r.id} className="glass-card p-4 flex gap-3 items-start">
+              <div className="w-10 h-10 rounded-2xl shrink-0 flex items-center justify-center"
+                style={{ background: `${color}20`, border: `1px solid ${color}40` }}>
+                <Icon name="MapPin" size={18} style={{ color }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold font-golos text-white">{formatRouteDate(r.created_at || r.date)}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="status-done">{distKm} км</span>
+                    <button
+                      onClick={() => handleDelete(r.id)}
+                      className="text-white/20 hover:text-red-400 transition-colors"
+                    >
+                      <Icon name="Trash2" size={12} />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-xs text-white/40 font-golos">📍 {r.points?.length ?? 0} точек</span>
+                  <span className="text-xs text-white/40 font-golos">⏱ {formatTime(r.elapsed_sec)}</span>
+                </div>
+
+                {editingId === r.id ? (
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      className="flex-1 text-xs rounded-lg px-2 py-1 font-golos outline-none"
+                      style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "white" }}
+                      placeholder="Заметка к маршруту..."
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => handleSaveNote(r.id)}
+                      className="text-xs px-2 py-1 rounded-lg font-golos font-semibold"
+                      style={{ background: "rgba(34,209,122,0.2)", color: "var(--grad-green)" }}
+                    >
+                      ✓
+                    </button>
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="text-xs px-2 py-1 rounded-lg font-golos text-white/30"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : r.note ? (
+                  <button
+                    onClick={() => { setEditingId(r.id); setNoteText(r.note); }}
+                    className="text-xs mt-1.5 text-white/60 font-golos bg-white/5 px-2 py-1 rounded-lg inline-block text-left"
+                  >
+                    {r.note} ✏️
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setEditingId(r.id); setNoteText(""); }}
+                    className="text-xs mt-1.5 text-white/25 font-golos"
+                  >
+                    + Добавить заметку
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
